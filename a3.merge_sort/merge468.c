@@ -29,8 +29,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #define N 32 
+
+/* New structure to allow data transfer between threads. */
+struct thread_sort_data {
+    int* arr;
+    int first;
+    int midpt;
+    int last;
+};
+
+
+
 
 /* Global variables -- be careful */
 int a[N];     /* Array to sort */
@@ -38,7 +50,7 @@ int temp[N];  /* Temporary storage */
 
 void genvalues(int n); /* Initializes array a[] */
 void prnvalues(int n); /* Prints array a[] */
-void merge(int first, int midpt, int last); /* Merges subarrays */
+void* merge(void* args); /* Merges subarrays */
 
 int main() 
 {
@@ -57,17 +69,34 @@ int main()
     printf("Initial values:\n");
     prnvalues(N);    /* Display the values */
 
-    arrsize = 1;
+    struct thread_sort_data thread_args;
 
+    arrsize = 1;
     while (arrsize < N) {
         printf("*** Merging subarrays of size %d\n",arrsize);
+
         arrsize= 2*arrsize; /* merge subarrays to double subarray size */
+
+        /*
+         *
+         * HERE IS WHERE WE NEED TO PARALLELIZE
+         *
+         */
+
+                
+
         for (i=0; i<N; i+=arrsize) {
             first = i;
             midpt = first +(arrsize/2);
             if (first + arrsize < N) last = first + arrsize;
             else last = N;
-            merge(first, midpt, last);
+
+            thread_args.arr = a;
+            thread_args.first = first;
+            thread_args.midpt = midpt;
+            thread_args.last = last;
+
+            merge(&thread_args);
         }
     }
 
@@ -83,8 +112,16 @@ int main()
  *    Then it copies temp[first],..., temp[last-1] back into
  *    a[first],..., a[last-1].
  */
-void merge(int first, int midpt, int last)
+void* merge(void* args)
 {
+    struct thread_sort_data passed_data = *((struct thread_sort_data*)(args));
+    
+    int* arr  = passed_data.arr;
+    int first = passed_data.first;
+    int midpt = passed_data.midpt;
+    int last  = passed_data.last;
+
+
     int leftptr;   /* Pointers used in array a[ ] */
     int rightptr;
     int k;         /* pointer used in array temp[ ] */
@@ -103,16 +140,17 @@ void merge(int first, int midpt, int last)
 
     /* Merge values in the two arrays of a[] into temp[] */
     for(k=first; k<last; k++) {
-        if (leftptr >= midpt) temp[k] = a[rightptr++];
-        else if (rightptr >= last) temp[k] = a[leftptr++];
-        else if (a[leftptr] < a[rightptr]) temp[k] = a[leftptr++];
-        else if (a[leftptr] >= a[rightptr]) temp[k] = a[rightptr++];
+        if (leftptr >= midpt) temp[k] = arr[rightptr++];
+        else if (rightptr >= last) temp[k] = arr[leftptr++];
+        else if (arr[leftptr] < arr[rightptr]) temp[k] = arr[leftptr++];
+        else if (arr[leftptr] >= arr[rightptr]) temp[k] = arr[rightptr++];
         else printf("There's a bug \n");
     }
 
     /* Copy temp[] back to a[] */
     for(k=first; k<last; k++) a[k] = temp[k];
 
+    return NULL;
 }
 
 

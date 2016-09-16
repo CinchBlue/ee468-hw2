@@ -33,6 +33,7 @@
 #include <assert.h>
 
 #define N 32 
+#define MAX_THREADS 32
 
 /* New structure to allow data transfer between threads. */
 struct thread_sort_data {
@@ -45,6 +46,7 @@ struct thread_sort_data {
 
 struct thread_control_data {
     int count;
+    pthread_t arr_tid[MAX_THREADS];
     pthread_mutex_t mutex;
 };
 
@@ -53,11 +55,14 @@ void thread_sort_data_set_data(struct thread_sort_data* obj,
                                int first,
                                int midpt,
                                int last) {
-    pthread_mutex
+    pthread_mutex_lock(&obj->mutex);
+
     obj->arr = arr;
     obj->first = first;
     obj->midpt = midpt;
     obj->last = last;
+
+    pthread_mutex_unlock(&obj->mutex);
 }
 
 void thread_control_data_init(struct thread_control_data* obj) {
@@ -65,15 +70,26 @@ void thread_control_data_init(struct thread_control_data* obj) {
     pthread_mutex_init(&obj->mutex, NULL);
 }
 
-void thread_control_data_inc(struct thread_control_data* obj) {
+void thread_control_data_start_thread(struct thread_control_data* obj,
+                                      void* (*procedure)(void*),
+                                      void* args) {
     pthread_mutex_lock(&obj->mutex);
+    pthread_mutex_lock(&((struct thread_sort_data*)(args))->mutex);
+
+    pthread_create(&(obj->arr_tid[obj->count]), NULL, procedure, args); 
     ++obj->count;
     pthread_mutex_unlock(&obj->mutex);
 }
 
-void thread_control_data_dec(struct thread_control_data* obj) {
+void thread_control_data_wait_threads(struct thread_control_data* obj) {
     pthread_mutex_lock(&obj->mutex);
-    --obj->count;
+
+    int i = 0;
+    for (i = 0; i < obj->count; ++i) {        
+        pthread_join(obj->arr_tid[i], NULL);
+    }
+    obj->count = 0;
+
     pthread_mutex_unlock(&obj->mutex);
 }
 
@@ -107,6 +123,10 @@ int main()
     struct thread_sort_data thread_args; /* The arguments being passed to a thread. */
     pthread_mutex_init(&(thread_args.mutex), NULL); /* Init the mutex. */
 
+    struct thread_control_data thread_control;
+    thread_control_data_init(&thread_control);
+    
+
     arrsize = 1;
     while (arrsize < N) {
         printf("*** Merging subarrays of size %d\n",arrsize);
@@ -118,9 +138,6 @@ int main()
          * HERE IS WHERE WE NEED TO PARALLELIZE
          *
          */
-
-                
-
         for (i=0; i<N; i+=arrsize) {
             first = i;
             midpt = first +(arrsize/2);
@@ -128,19 +145,16 @@ int main()
             else last = N;
 
             /* Prepare merge thread to run -- load arguments */
-            pthread_mutex_lock(&(thread_args.mutex)); 
-
-            thread_args.arr = a;
-            thread_args.first = first;
-            thread_args.midpt = midpt;
-            thread_args.last = last;
-
-            pthread_mutex_unlock(&(thread_args.mutex)); 
-
+            thread_sort_data_set_data(&thread_args, a, first, midpt, last);
+            
             /* Initialize the merging thread. */
-            merge(&thread_args);
+            thread_control_data_start_thread(&thread_control,
+                                             merge,
+                                             (void*)(&thread_args));
         }
         /* Wait until all of the threads join. */
+        thread_control_data_wait_threads(&thread_control);
+        prnvalues(N);    /* Display the values */
     }
 
     printf("\nOutput:\n");
@@ -164,6 +178,11 @@ void* merge(void* args)
     int midpt = passed_data.midpt;
     int last  = passed_data.last;
 
+#ifdef DEBUG
+            printf("a: %p\nfirst: %d\nmidpt: %d\nlast: %d\n", a, first, midpt, last);
+#endif /* DEBUG */
+
+    pthread_mutex_unlock(&((struct thread_sort_data*)(args))->mutex);
 
     int leftptr;   /* Pointers used in array a[ ] */
     int rightptr;
@@ -193,7 +212,7 @@ void* merge(void* args)
     /* Copy temp[] back to a[] */
     for(k=first; k<last; k++) a[k] = temp[k];
 
-    return NULL;
+    pthread_exit(0);
 }
 
 

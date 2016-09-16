@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <assert.h>
 
 #define N 32 
 
@@ -39,8 +40,42 @@ struct thread_sort_data {
     int first;
     int midpt;
     int last;
+    pthread_mutex_t mutex;
 };
 
+struct thread_control_data {
+    int count;
+    pthread_mutex_t mutex;
+};
+
+void thread_sort_data_set_data(struct thread_sort_data* obj,
+                               int* arr,
+                               int first,
+                               int midpt,
+                               int last) {
+    pthread_mutex
+    obj->arr = arr;
+    obj->first = first;
+    obj->midpt = midpt;
+    obj->last = last;
+}
+
+void thread_control_data_init(struct thread_control_data* obj) {
+    obj->count = 0;
+    pthread_mutex_init(&obj->mutex, NULL);
+}
+
+void thread_control_data_inc(struct thread_control_data* obj) {
+    pthread_mutex_lock(&obj->mutex);
+    ++obj->count;
+    pthread_mutex_unlock(&obj->mutex);
+}
+
+void thread_control_data_dec(struct thread_control_data* obj) {
+    pthread_mutex_lock(&obj->mutex);
+    --obj->count;
+    pthread_mutex_unlock(&obj->mutex);
+}
 
 
 
@@ -69,7 +104,8 @@ int main()
     printf("Initial values:\n");
     prnvalues(N);    /* Display the values */
 
-    struct thread_sort_data thread_args;
+    struct thread_sort_data thread_args; /* The arguments being passed to a thread. */
+    pthread_mutex_init(&(thread_args.mutex), NULL); /* Init the mutex. */
 
     arrsize = 1;
     while (arrsize < N) {
@@ -91,13 +127,20 @@ int main()
             if (first + arrsize < N) last = first + arrsize;
             else last = N;
 
+            /* Prepare merge thread to run -- load arguments */
+            pthread_mutex_lock(&(thread_args.mutex)); 
+
             thread_args.arr = a;
             thread_args.first = first;
             thread_args.midpt = midpt;
             thread_args.last = last;
 
+            pthread_mutex_unlock(&(thread_args.mutex)); 
+
+            /* Initialize the merging thread. */
             merge(&thread_args);
         }
+        /* Wait until all of the threads join. */
     }
 
     printf("\nOutput:\n");
